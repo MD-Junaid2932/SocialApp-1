@@ -1,22 +1,43 @@
-name: Build APK
+name: Build APK from ZIP
 on:
   push:
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Find and unzip project
+        run: |
+          mkdir -p /tmp/proj
+          ZIP=$(find . -maxdepth 2 -name "*.zip" -not -path "./.git/*" | head -n 1)
+          if [ -n "$ZIP" ]; then
+            echo "Unzipping $ZIP"
+            unzip -q -o "$ZIP" -d /tmp/proj
+          else
+            echo "No zip found, using repository files"
+            cp -r . /tmp/proj/
+          fi
+          SETTINGS=$(find /tmp/proj -maxdepth 3 \( -name settings.gradle.kts -o -name settings.gradle \) | head -n 1)
+          if [ -z "$SETTINGS" ]; then echo "settings.gradle not found"; exit 1; fi
+          echo "PROJ_DIR=$(dirname "$SETTINGS")" >> $GITHUB_ENV
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
+
       - name: Build debug APK
+        working-directory: ${{ env.PROJ_DIR }}
         run: gradle assembleDebug --no-daemon
+
       - uses: actions/upload-artifact@v4
         with:
           name: Social-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJ_DIR }}/app/build/outputs/apk/debug/app-debug.apk
